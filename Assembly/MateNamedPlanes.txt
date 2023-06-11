@@ -1,0 +1,151 @@
+Option Explicit
+
+Dim swApp As SldWorks.SldWorks
+
+Sub main()
+
+    Set swApp = Application.SldWorks
+
+    Dim swmodel As SldWorks.ModelDoc2
+    Set swmodel = swApp.ActiveDoc
+
+    If Not swmodel.GetType = swDocASSEMBLY Then
+        Exit Sub
+    End If
+    
+    Dim swComponentsCollection As VBA.Collection
+    Set swComponentsCollection = CollectSelectedComponents(swmodel.SelectionManager)
+
+    If swComponentsCollection.Count = 0 Then
+        Exit Sub
+    End If
+
+    Dim swAssem As SldWorks.AssemblyDoc
+    Set swAssem = swmodel
+    
+    Dim PlanesToMateUserInput As String
+    PlanesToMateUserInput = InputBox("Please enter comma separated planes names in pairs to mate, Assembly First, Component Second", "Wobs Auto Mate Hack")
+    
+    If PlanesToMateUserInput = "" Then
+        Exit Sub
+    End If
+    
+    Dim PlanesToMate() As String
+    
+    PlanesToMate = Split(PlanesToMateUserInput, ",")
+    
+
+    
+    Dim NumMates As Long
+    NumMates = (UBound(PlanesToMate) + 1) / 2
+    
+    Updates swAssem, False
+    
+    Dim compCounter As Long
+    For compCounter = 1 To swComponentsCollection.Count
+    
+        Dim mateCounter As Long
+        For mateCounter = 0 To NumMates Step 2
+        
+            AddMate swAssem, swComponentsCollection(compCounter), PlanesToMate(mateCounter), PlanesToMate(mateCounter + 1), compCounter
+        
+        Next mateCounter
+    
+    
+    Next compCounter
+    
+    Updates swAssem, True
+    
+    swmodel.FeatureManager.UpdateFeatureTree
+    
+    swmodel.Extension.Rebuild swUpdateMates
+    
+    swmodel.ViewZoomtofit2
+    
+End Sub
+
+Private Sub AddMate(swAssem As SldWorks.AssemblyDoc, swComponent As SldWorks.Component2, assemPlaneName As String, compPlaneName As String, nameSuffix As Long)
+
+    Dim swCompModel As SldWorks.ModelDoc2
+    Set swCompModel = swComponent.GetModelDoc2
+    
+    Dim swCompFeature As SldWorks.Feature
+    
+    If swCompModel.GetType = swDocASSEMBLY Then
+    
+        Dim swCompAssem As SldWorks.AssemblyDoc
+        Set swCompAssem = swCompModel
+        
+        Set swCompFeature = swCompAssem.FeatureByName(compPlaneName)
+    
+    End If
+    
+    If swCompModel.GetType = swDocPART Then
+    
+        Dim swCompPart As SldWorks.PartDoc
+        Set swCompPart = swCompModel
+        
+        Set swCompFeature = swCompPart.FeatureByName(compPlaneName)
+    
+    End If
+    
+    If swCompFeature Is Nothing Then
+        Exit Sub
+    End If
+    
+    Set swCompFeature = swComponent.GetCorresponding(swCompFeature)
+    
+    Dim swAssemFeature As SldWorks.Feature
+    Set swAssemFeature = swAssem.FeatureByName(assemPlaneName)
+    
+    If swAssemFeature Is Nothing Then
+        Exit Sub
+    End If
+    
+    'swAssemFeature.Select2 False, 1
+    'swCompFeature.Select2 True, 1
+    
+    swCompFeature.Select2 False, 1
+    swAssemFeature.Select2 True, 1
+    
+    Dim error As swAddMateError_e
+    
+    Dim swMate As SldWorks.Mate2
+    
+    Set swMate = swAssem.AddMate5(swMateCOINCIDENT, swMateAlignCLOSEST, False, 0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#, False, False, 0, error)
+    
+    Dim swMateFeature As SldWorks.Feature
+    Set swMateFeature = swMate
+    swMateFeature.Name = assemPlaneName & "," & compPlaneName & "," & nameSuffix
+    
+End Sub
+
+Private Function CollectSelectedComponents(swSelMgr As SldWorks.SelectionMgr) As VBA.Collection
+
+    Set CollectSelectedComponents = New VBA.Collection
+    
+    Dim i As Long
+    For i = 1 To swSelMgr.GetSelectedObjectCount2(-1)
+    
+        If swSelMgr.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
+        
+            Dim swComponent As SldWorks.Component2
+            Set swComponent = swSelMgr.GetSelectedObject6(i, -1)
+        
+            CollectSelectedComponents.Add swComponent
+        
+        End If
+
+    Next i
+
+End Function
+
+Private Sub Updates(swmodel As SldWorks.ModelDoc2, update As Boolean)
+
+    Dim swView As SldWorks.ModelView
+    Set swView = swmodel.ActiveView
+    swView.EnableGraphicsUpdate = update
+    swmodel.FeatureManager.EnableFeatureTree = update
+    swmodel.FeatureManager.EnableFeatureTreeWindow = update
+    
+End Sub
